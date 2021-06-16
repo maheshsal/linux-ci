@@ -330,18 +330,38 @@ static inline void interrupt_nmi_enter_prepare(struct pt_regs *regs, struct inte
 	/*
 	 * Do not use nmi_enter() for pseries hash guest taking a real-mode
 	 * NMI because not everything it touches is within the RMA limit.
+	 * Also, do not use in real mode if percpu first chunk is not
+	 * embedded. With CONFIG_NEED_PER_CPU_PAGE_FIRST_CHUNK enabled
+	 * there are chances where percpu allocation can come from vmalloc
+	 * area.
 	 */
-	if (!IS_ENABLED(CONFIG_PPC_BOOK3S_64) ||
+	if ((!IS_ENABLED(CONFIG_PPC_BOOK3S_64) ||
 			!firmware_has_feature(FW_FEATURE_LPAR) ||
-			radix_enabled() || (mfmsr() & MSR_DR))
+			radix_enabled())
+#ifdef CONFIG_PPC64
+			&& IS_ENABLED(CONFIG_NEED_PER_CPU_PAGE_FIRST_CHUNK)
+			&& ((mfmsr() & MSR_DR) ||
+			    static_key_enabled(&__percpu_embed_first_chunk.key))
+#else
+			|| (mfmsr() & MSR_DR)
+#endif
+			)
 		nmi_enter();
 }
 
 static inline void interrupt_nmi_exit_prepare(struct pt_regs *regs, struct interrupt_nmi_state *state)
 {
-	if (!IS_ENABLED(CONFIG_PPC_BOOK3S_64) ||
+	if ((!IS_ENABLED(CONFIG_PPC_BOOK3S_64) ||
 			!firmware_has_feature(FW_FEATURE_LPAR) ||
-			radix_enabled() || (mfmsr() & MSR_DR))
+			radix_enabled())
+#ifdef CONFIG_PPC64
+			&& IS_ENABLED(CONFIG_NEED_PER_CPU_PAGE_FIRST_CHUNK)
+			&& ((mfmsr() & MSR_DR) ||
+			     static_key_enabled(&__percpu_embed_first_chunk.key))
+#else
+			|| (mfmsr() & MSR_DR)
+#endif
+			)
 		nmi_exit();
 
 	/*
